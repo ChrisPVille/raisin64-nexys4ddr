@@ -3,18 +3,25 @@ module raisin64_nexys4_ddr_top(
     input CPU_RESETN,
     input[15:0] SW,
     output[15:0] LED,
-    inout[8:1] JB
+    inout[8:1] JB,
+    output[3:0] VGA_R,
+    output[3:0] VGA_G,
+    output[3:0] VGA_B,
+    output VGA_HS,
+    output VGA_VS
     );
 
-    defparam cpu.imem.INIT_FILE = "/home/christopher/git/raisin64-cpu/support/imem.hex";
-    defparam cpu.dmem.INIT_FILE = "/home/christopher/git/raisin64-cpu/support/dmem.hex";
-    
+
+    localparam IMEM_INIT = "/home/christopher/git/raisin64-nexys4ddr/software/imem.hex";
+    localparam DMEM_INIT = "/home/christopher/git/raisin64-nexys4ddr/software/dmem.hex";
+
     //////////  Clock Generation  //////////
-    wire clk_dig;
-    
+    wire clk_dig, clk_vga;
+
     clk_synth pll(
         .clk_in(CLK100MHZ),
-        .clk_dig(clk_dig)
+        .clk_dig(clk_dig),
+        .clk_vga(clk_vga)
         );
 
     //////////  Reset Sync/Stretch  //////////
@@ -31,7 +38,10 @@ module raisin64_nexys4_ddr_top(
     wire mem_from_cpu_write;
     wire mem_to_cpu_ready;
 
-    raisin64 cpu(
+    raisin64 #(
+        .IMEM_INIT(IMEM_INIT),
+        .DMEM_INIT(DMEM_INIT)
+        ) cpu (
         .clk(clk_dig),
         .rst_n(rst_n),
         .mem_din(mem_to_cpu),
@@ -62,7 +72,7 @@ module raisin64_nexys4_ddr_top(
     reg[15:0] led_reg;
     always @(posedge clk_dig or negedge rst_n) begin
         if(~rst_n) led_reg <= 16'h0;
-        else if(led_en & mem_addr_valid & mem_from_cpu_write) led_reg <= mem_from_cpu;
+        else if(led_en & mem_from_cpu_write) led_reg <= mem_from_cpu;
     end
 
     assign LED = led_reg;
@@ -79,9 +89,33 @@ module raisin64_nexys4_ddr_top(
         end
     end
 
+    //VGA System
+    wire[15:0] vga_dout;
+    //Again, for now we take the lower bits from a fully-aligned access. This
+    //will be trivial to change in the future.
+    vgaCharGen #(
+        .SINGLE_CYCLE_DESIGN(0) //Allow the registering of cpu_data outputs
+        ) vga_cg(
+        .pixel_clk(clk_vga),
+        .rst_p(~rst_n),
+        .pixel_clkEn(1'b1),
+        .cpu_clk(clk_dig),
+        .cpu_addr(mem_addr[18:3]),
+        .cpu_oe(vga_en),
+        .cpu_we(vga_en & mem_from_cpu_write),
+        .cpu_dataIn(mem_from_cpu[15:0]),
+        .cpu_dataOut(vga_dout),
+        .VGA_R(VGA_R),
+        .VGA_G(VGA_G),
+        .VGA_B(VGA_B),
+        .VGA_HS(VGA_HS),
+        .VGA_VS(VGA_VS)
+        );
+
     //Data selection
     assign mem_to_cpu_ready = mem_addr_valid;
     assign mem_to_cpu = sw_en ? sw_pre0 :
+                        vga_en ? vga_dout :
                         64'h0;
 
 endmodule

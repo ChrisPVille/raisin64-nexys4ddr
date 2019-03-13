@@ -1,0 +1,24 @@
+SET_FLAG MODE INTERACTIVE
+SET_FLAG STANDALONE_MODE TRUE
+SET_PREFERENCE ipi_mode no
+SET_PREFERENCE is_ip_locked false
+SET_PREFERENCE devicefamily artix7
+SET_PREFERENCE device xc7a100t
+SET_PREFERENCE speedgrade -1
+SET_PREFERENCE package csg324
+SET_PREFERENCE verilogsim true
+SET_PREFERENCE vhdlsim false
+SET_PREFERENCE designentry Verilog
+SET_PREFERENCE outputdirectory /home/christopher/.Xil/Vivado-16939-titan/coregen/mig/_tmp/
+SET_PREFERENCE subworkingdirectory /home/christopher/.Xil/Vivado-16939-titan/coregen/mig/_tmp/
+SET_PREFERENCE flowvendor Other
+SET_PREFERENCE tool vivado
+SET_PREFERENCE compnamestatus 0
+SET_PARAMETER component_name mig
+SET_PARAMETER xml_input_file /home/christopher/git/raisin64-nexys4ddr/raisin64-nexys4ddr.srcs/sources_1/ip/mig/mig_b.prj
+SET_PARAMETER data_dir_path /home/christopher/storage/Vivado/2018.3/data/ip/xilinx/mig_7series_v4_2
+SET_CORE_NAME Memory Interface Generator (MIG 7 Series)
+SET_CORE_VERSION 4.2
+SET_CORE_VLNV xilinx.com:ip:mig_7series:4.2
+SET_CORE_PATH /home/christopher/storage/Vivado/2018.3/data/ip/xilinx/mig_7series_v4_2
+SET_CORE_DATASHEET /home/christopher/storage/Vivado/2018.3/data/ip/xilinx/mig_7series_v4_2/data/docs/ds176_7series_MIS.pdf

@@ -8,26 +8,48 @@ module raisin64_nexys4_ddr_top(
     output[3:0] VGA_G,
     output[3:0] VGA_B,
     output VGA_HS,
-    output VGA_VS
-    );
+    output VGA_VS,
 
+    //RAM Interface
+    inout[15:0] ddr2_dq,
+    inout[1:0] ddr2_dqs_n,
+    inout[1:0] ddr2_dqs_p,
+    output[12:0] ddr2_addr,
+    output[2:0] ddr2_ba,
+    output ddr2_ras_n,
+    output ddr2_cas_n,
+    output ddr2_we_n,
+    output ddr2_ck_p,
+    output ddr2_ck_n,
+    output ddr2_cke,
+    output ddr2_cs_n,
+    output[1:0] ddr2_dm,
+    output ddr2_odt
+    );
 
     localparam IMEM_INIT = "/home/christopher/git/raisin64-nexys4ddr/software/imem.hex";
     localparam DMEM_INIT = "/home/christopher/git/raisin64-nexys4ddr/software/dmem.hex";
 
     //////////  Clock Generation  //////////
-    wire clk_dig, clk_vga;
+    wire clk_cpu, clk_mem, clk_vga, clk_in;
+    
+    IBUFG clk_in_buf (.I(CLK100MHZ), .O(clk_in));
 
-    clk_synth pll(
-        .clk_in(CLK100MHZ),
-        .clk_dig(clk_dig),
-        .clk_vga(clk_vga)
+    clk_synth dig_pll(
+        .clk_in(clk_in),
+        .clk_cpu(clk_cpu),
+        .clk_mem(clk_mem)
         );
 
+    clk_vga vid_pll(
+        .clk_in(clk_in),
+        .clk_vga(clk_vga)
+        );
+        
     //////////  Reset Sync/Stretch  //////////
     reg[31:0] rst_stretch = 32'hFFFFFFFF;
     wire rst_n;
-    always @(posedge clk_dig) rst_stretch = {CPU_RESETN,rst_stretch[31:1]};
+    always @(posedge clk_cpu) rst_stretch = {CPU_RESETN,rst_stretch[31:1]};
     assign rst_n = |rst_stretch[29:0]; //Ignore the top bits as they are not synchronized
 
     //////////  CPU  //////////
@@ -42,14 +64,32 @@ module raisin64_nexys4_ddr_top(
         .IMEM_INIT(IMEM_INIT),
         .DMEM_INIT(DMEM_INIT)
         ) cpu (
-        .clk(clk_dig),
+        .clk(clk_cpu),
+        .clk_100mhz(clk_in),
         .rst_n(rst_n),
+        
         .mem_din(mem_to_cpu),
         .mem_dout(mem_from_cpu),
         .mem_addr(mem_addr),
         .mem_addr_valid(mem_addr_valid),
         .mem_dout_write(mem_from_cpu_write),
         .mem_din_ready(mem_to_cpu_ready),
+        
+        .ddr2_addr(ddr2_addr),
+        .ddr2_ba(ddr2_ba),
+        .ddr2_cas_n(ddr2_cas_n),
+        .ddr2_ck_n(ddr2_ck_n),
+        .ddr2_ck_p(ddr2_ck_p),
+        .ddr2_cke(ddr2_cke),
+        .ddr2_ras_n(ddr2_ras_n),
+        .ddr2_we_n(ddr2_we_n),
+        .ddr2_dq(ddr2_dq),
+        .ddr2_dqs_n(ddr2_dqs_n),
+        .ddr2_dqs_p(ddr2_dqs_p),
+        .ddr2_cs_n(ddr2_cs_n),
+        .ddr2_dm(ddr2_dm),
+        .ddr2_odt(ddr2_odt),
+        
         .jtag_tck(JB[4]),
         .jtag_tms(JB[1]),
         .jtag_tdi(JB[2]),
@@ -70,7 +110,7 @@ module raisin64_nexys4_ddr_top(
     //re-written with the introduction of caches, we only support 64-bit aligned
     //access to IO space for now.
     reg[15:0] led_reg;
-    always @(posedge clk_dig or negedge rst_n) begin
+    always @(posedge clk_cpu or negedge rst_n) begin
         if(~rst_n) led_reg <= 16'h0;
         else if(led_en & mem_from_cpu_write) led_reg <= mem_from_cpu;
     end
@@ -79,7 +119,7 @@ module raisin64_nexys4_ddr_top(
 
     //SW uses a small synchronizer
     reg[15:0] sw_pre0, sw_pre1;
-    always @(posedge clk_dig or negedge rst_n) begin
+    always @(posedge clk_cpu or negedge rst_n) begin
         if(~rst_n) begin
             sw_pre0 <= 16'h0;
             sw_pre1 <= 16'h0;
@@ -99,7 +139,7 @@ module raisin64_nexys4_ddr_top(
         .pixel_clk(clk_vga),
         .rst_p(~rst_n),
         .pixel_clkEn(1'b1),
-        .cpu_clk(clk_dig),
+        .cpu_clk(clk_cpu),
         .cpu_addr(mem_addr[18:3]),
         .cpu_oe(vga_en),
         .cpu_we(vga_en & mem_from_cpu_write),

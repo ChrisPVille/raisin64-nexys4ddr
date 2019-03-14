@@ -8,6 +8,8 @@
 //double the speed, decreasing the delay of the clock domain crossing from the 
 //CPU into the ui_*/app_* memory controller domain.
 
+`include "io_def.vh"
+
 module physical_ram(
     input clk_100mhz,
     input rst_n,
@@ -128,10 +130,10 @@ module physical_ram(
     reg[2:0] state;
     
     localparam STATE_IDLE = 3'h0;
-    localparam STATE_DOREAD = 3'h1;
-    localparam STATE_DOWRITE = 3'h4;
-    localparam STATE_PREWRITE_H = 3'h5;
-    localparam STATE_PREWRITE_L = 3'h6;
+    localparam STATE_READADDR = 3'h1;
+    localparam STATE_WRITEADDR = 3'h4;
+    localparam STATE_WRITEDATA_H = 3'h5;
+    localparam STATE_WRITEDATA_L = 3'h6;
     
     localparam CMD_READ = 3'h1;
     localparam CMD_WRITE = 3'h0;
@@ -142,7 +144,7 @@ module physical_ram(
     always @(posedge ui_clk or negedge rst_n) begin
         if(~rst_n) begin
             data_out <= 127'h0;
-        end else if (state == STATE_DOREAD && mem_rd_data_valid) begin   
+        end else if (state == STATE_READADDR && mem_rd_data_valid) begin   
             if(mem_rd_data_end) data_out[63:0] <= mem_rd_data;
             else data_out[127:64] <= mem_rd_data;
         end
@@ -153,6 +155,7 @@ module physical_ram(
         if(~rst_n) begin
             state <= STATE_IDLE;
             complete <= 0;
+            mem_cmd <= CMD_WRITE;
             mem_wdf_mask <= 8'h00;
             mem_wdf_data <= 64'h0;
             mem_wdf_wren <= 0;
@@ -169,31 +172,45 @@ module physical_ram(
                     mem_en <= 1;
                     mem_cmd <= CMD_WRITE;
                     mem_wdf_end <= 0;
-                    state <= STATE_DOWRITE;
+                    state <= STATE_WRITEADDR;
                 end 
                 else if(rstrobe_sync) begin
                     mem_en <= 1;
                     mem_cmd <= CMD_READ;
-                    state <= STATE_DOREAD;
+                    state <= STATE_READADDR;
                 end
             end
 
-            STATE_PREWRITE_H: begin
-                if(mem_wdf_rdy) begin //Wait for Write Data queue to have space 
-                    mem_wdf_mask <= 8'h00;
-                    mem_wdf_data <= data_in[127:64];
+            STATE_WRITEDATA_H: begin
+                if(mem_wdf_rdy) begin //Wait for Write Data queue to have space
+                    //TODO Temporary masking until we have full 128-bits from cache eviction
+                    case(width)
+                    `RAM_WIDTH64: begin
+                        mem_wdf_mask <= 8'h00; mem_wdf_data <= data_in[63:0];
+                    end
+                    `RAM_WIDTH32: begin
+                        mem_wdf_mask <= 8'hF0;
+                        mem_wdf_data <= {data_in[63:32],data_in[63:32]};
+                    end
+                    `RAM_WIDTH16: begin
+                    mem_wdf_mask <= 8'hFC;
+                    mem_wdf_data <= {data_in[63:48],data_in[63:48],data_in[63:48],data_in[63:48]};
+                    end
+                    `RAM_WIDTH8: begin
+                    mem_wdf_mask <= 8'hFE;
+                    mem_wdf_data <= {data_in[63:56],data_in[63:56],data_in[63:56],data_in[63:56],data_in[63:56],data_in[63:56],data_in[63:56],data_in[63:56]};
+                    end
+                    endcase
+                    mem_wdf_mask <= 8'hFF; //TODO unmask when plugged into cache
                     mem_wdf_wren <= 1;
-                    state <= STATE_PREWRITE_L;
+                    state <= STATE_WRITEDATA_L;
                 end
             end
             
-            STATE_PREWRITE_L: begin
-                if(mem_wdf_rdy) begin
-                //We should wait for Write Data queue to have space, but it 
-                //seems that the very first write behaves contrary to the 
-                //datasheet and will stall forever. In any case, 
-                    mem_wdf_mask <= 8'h00;
-                    mem_wdf_data <= data_in[63:0];
+            STATE_WRITEDATA_L: begin
+                if(mem_wdf_rdy) begin //Wait for Write Data queue to have space 
+                    mem_wdf_mask <= 8'hFF;
+                    mem_wdf_data <= 64'h0;
                     mem_wdf_wren <= 1;
                     mem_wdf_end <= 1;
                     complete <= 1;
@@ -201,7 +218,7 @@ module physical_ram(
                 end
             end
             
-            STATE_DOREAD: begin
+            STATE_READADDR: begin
                 if(mem_rdy) begin //Wait for command queue to accept command 
                     mem_en <= 0;   
                     if(mem_rd_data_valid & mem_rd_data_end) begin
@@ -211,10 +228,10 @@ module physical_ram(
                 end
             end
             
-            STATE_DOWRITE: begin
+            STATE_WRITEADDR: begin
                 if(mem_rdy) begin //Wait for command queue to accept command
                     mem_en <= 0;   
-                    state <= STATE_PREWRITE_H;
+                    state <= STATE_WRITEDATA_H;
                 end
             end
             endcase

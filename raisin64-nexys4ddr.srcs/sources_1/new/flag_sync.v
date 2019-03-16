@@ -15,7 +15,7 @@ module flag_sync(
     (* ASYNC_REG = "TRUE" *) reg[2:0] flag_sync;
     always @(posedge b_clk or negedge rst_n) begin
         if(~rst_n) flag_sync <= 3'h0;
-	else flag_sync <= {flag_sync, flag};
+	else flag_sync <= {flag_sync[1:0], flag};
     end
 
     assign b_flag = flag_sync[1] ^ flag_sync[2];

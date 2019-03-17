@@ -94,7 +94,9 @@ module raisin64_nexys4_ddr_top(
         .jtag_tms(JB[1]),
         .jtag_tdi(JB[2]),
         .jtag_trst(JB[7]),
-        .jtag_tdo(JB[3])
+        .jtag_tdo(JB[3]),
+        .mem_rdy(LED[15]),
+        .mem_wdf_rdy(LED[14])
         );
 
     //////////  IO  //////////
@@ -115,7 +117,7 @@ module raisin64_nexys4_ddr_top(
         else if(led_en & mem_from_cpu_write) led_reg <= mem_from_cpu;
     end
 
-    assign LED = led_reg;
+    assign LED[13:0] = led_reg;
 
     //SW uses a small synchronizer
     reg[15:0] sw_pre0, sw_pre1;

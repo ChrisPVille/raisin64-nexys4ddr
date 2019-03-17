@@ -37,14 +37,16 @@ module physical_ram(
     input rstrobe,
     input wstrobe,
     output transaction_complete,
-    output ready
+    output ready,
+    output mem_rdy,
+    output mem_wdf_rdy
     );
 
     wire ui_clk, ui_clk_sync_rst;
 
     reg[2:0] mem_cmd;
     reg mem_en;
-    wire mem_rdy;
+    //wire mem_rdy;
 
     wire mem_rd_data_end, mem_rd_data_valid;
     wire[63:0] mem_rd_data;
@@ -52,7 +54,7 @@ module physical_ram(
     reg[63:0] mem_wdf_data;
     reg mem_wdf_end, mem_wdf_wren;
     reg[7:0] mem_wdf_mask;
-    wire mem_wdf_rdy;
+    //wire mem_wdf_rdy;
 
     mig mig1 (
         .ddr2_addr(ddr2_addr),

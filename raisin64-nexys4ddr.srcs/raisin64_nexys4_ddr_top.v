@@ -31,26 +31,31 @@ module raisin64_nexys4_ddr_top(
     localparam DMEM_INIT = "/home/christopher/git/raisin64-nexys4ddr/software/dmem.hex";
 
     //////////  Clock Generation  //////////
-    wire clk_cpu, clk_mem, clk_vga, clk_in;
-    
+    wire clk_cpu, clk_vga, clk_in;
+    wire dig_pll_locked, vid_pll_locked;
+
     IBUFG clk_in_buf (.I(CLK100MHZ), .O(clk_in));
 
     clk_synth dig_pll(
+        .locked(dig_pll_locked),
         .clk_in(clk_in),
-        .clk_cpu(clk_cpu),
-        .clk_mem(clk_mem)
+        .clk_cpu(clk_cpu)
         );
 
     clk_vga vid_pll(
+        .locked(vid_pll_locked),
         .clk_in(clk_in),
         .clk_vga(clk_vga)
         );
-        
+
     //////////  Reset Sync/Stretch  //////////
     reg[31:0] rst_stretch = 32'hFFFFFFFF;
-    wire rst_n;
-    always @(posedge clk_cpu) rst_stretch = {CPU_RESETN,rst_stretch[31:1]};
-    assign rst_n = |rst_stretch[29:0]; //Ignore the top bits as they are not synchronized
+    wire reset_req_n, rst_n;
+
+    assign reset_req_n = CPU_RESETN & dig_pll_locked & vid_pll_locked;
+
+    always @(posedge clk_cpu) rst_stretch = {reset_req_n,rst_stretch[31:1]};
+    assign rst_n = reset_req_n & &rst_stretch;
 
     //////////  CPU  //////////
     wire[63:0] mem_from_cpu;
@@ -67,14 +72,14 @@ module raisin64_nexys4_ddr_top(
         .clk(clk_cpu),
         .clk_100mhz(clk_in),
         .rst_n(rst_n),
-        
+
         .mem_din(mem_to_cpu),
         .mem_dout(mem_from_cpu),
         .mem_addr(mem_addr),
         .mem_addr_valid(mem_addr_valid),
         .mem_dout_write(mem_from_cpu_write),
         .mem_din_ready(mem_to_cpu_ready),
-        
+
         .ddr2_addr(ddr2_addr),
         .ddr2_ba(ddr2_ba),
         .ddr2_cas_n(ddr2_cas_n),
@@ -89,14 +94,12 @@ module raisin64_nexys4_ddr_top(
         .ddr2_cs_n(ddr2_cs_n),
         .ddr2_dm(ddr2_dm),
         .ddr2_odt(ddr2_odt),
-        
+
         .jtag_tck(JB[4]),
         .jtag_tms(JB[1]),
         .jtag_tdi(JB[2]),
         .jtag_trst(JB[7]),
-        .jtag_tdo(JB[3]),
-        .mem_rdy(LED[15]),
-        .mem_wdf_rdy(LED[14])
+        .jtag_tdo(JB[3])
         );
 
     //////////  IO  //////////
@@ -117,7 +120,7 @@ module raisin64_nexys4_ddr_top(
         else if(led_en & mem_from_cpu_write) led_reg <= mem_from_cpu;
     end
 
-    assign LED[13:0] = led_reg;
+    assign LED[15:0] = led_reg;
 
     //SW uses a small synchronizer
     reg[15:0] sw_pre0, sw_pre1;

@@ -37,16 +37,14 @@ module physical_ram(
     input rstrobe,
     input wstrobe,
     output transaction_complete,
-    output ready,
-    output mem_rdy,
-    output mem_wdf_rdy
+    output ready
     );
 
     wire ui_clk, ui_clk_sync_rst;
 
     reg[2:0] mem_cmd;
     reg mem_en;
-    //wire mem_rdy;
+    wire mem_rdy;
 
     wire mem_rd_data_end, mem_rd_data_valid;
     wire[63:0] mem_rd_data;
@@ -54,7 +52,7 @@ module physical_ram(
     reg[63:0] mem_wdf_data;
     reg mem_wdf_end, mem_wdf_wren;
     reg[7:0] mem_wdf_mask;
-    //wire mem_wdf_rdy;
+    wire mem_wdf_rdy;
 
     mig mig1 (
         .ddr2_addr(ddr2_addr),
@@ -105,17 +103,19 @@ module physical_ram(
     wire rstrobe_sync, wstrobe_sync;
 
     flag_sync rs_sync(
-        .rst_n(rst_n),
+        .a_rst_n(rst_n),
         .a_clk(cpu_clk),
         .a_flag(rstrobe),
+        .b_rst_n(~ui_clk_sync_rst),
         .b_clk(ui_clk),
         .b_flag(rstrobe_sync)
         );
 
     flag_sync ws_sync(
-        .rst_n(rst_n),
+        .a_rst_n(rst_n),
         .a_clk(cpu_clk),
         .a_flag(wstrobe),
+        .b_rst_n(~ui_clk_sync_rst),
         .b_clk(ui_clk),
         .b_flag(wstrobe_sync)
         );
@@ -123,9 +123,10 @@ module physical_ram(
     reg complete;
 
     flag_sync complete_sync(
-        .rst_n(~ui_clk_sync_rst),
+        .a_rst_n(~ui_clk_sync_rst),
         .a_clk(ui_clk),
         .a_flag(complete),
+        .b_rst_n(rst_n),
         .b_clk(cpu_clk),
         .b_flag(transaction_complete)
         );
@@ -140,8 +141,9 @@ module physical_ram(
     reg[2:0] state;
 
     localparam STATE_IDLE = 3'h0;
-    localparam STATE_READADDR = 3'h1;
-    localparam STATE_WRITEADDR = 3'h4;
+    localparam STATE_PREREAD = 3'h1;
+    localparam STATE_READ = 3'h2;
+    localparam STATE_WRITE = 3'h4;
     localparam STATE_WRITEDATA_H = 3'h5;
     localparam STATE_WRITEDATA_L = 3'h6;
 
@@ -155,7 +157,8 @@ module physical_ram(
         if(ui_clk_sync_rst) begin
             data_out <= 127'h0;
         end else begin
-            if (state == STATE_READADDR && mem_rd_data_valid) begin
+            if (state == STATE_READ && mem_rd_data_valid || //Data is available normally
+                state == STATE_PREREAD && mem_rdy && mem_rd_data_valid) begin //Data happens to be available immediately
                 data_out[127:64] <= 64'h0;
                 if(~addr[0]) begin
                     if(~mem_rd_data_end) case(width)
@@ -208,12 +211,12 @@ module physical_ram(
                     mem_en <= 1;
                     mem_cmd <= CMD_WRITE;
                     mem_wdf_end <= 0;
-                    state <= STATE_WRITEADDR;
+                    state <= STATE_WRITE;
                 end
                 else if(rstrobe_sync) begin
                     mem_en <= 1;
                     mem_cmd <= CMD_READ;
-                    state <= STATE_READADDR;
+                    state <= STATE_PREREAD;
                 end
             end
 
@@ -280,17 +283,25 @@ module physical_ram(
                 end
             end
 
-            STATE_READADDR: begin
+            STATE_PREREAD: begin
                 if(mem_rdy) begin //Wait for command queue to accept command
                     mem_en <= 0;
-                    if(mem_rd_data_valid & mem_rd_data_end) begin
+                    state <= STATE_READ;
+                    if(mem_rd_data_valid & mem_rd_data_end) begin //If data happens to be available now
                         state <= STATE_IDLE;
                         complete <= 1;
                     end
                 end
             end
 
-            STATE_WRITEADDR: begin
+            STATE_READ: begin
+                if(mem_rd_data_valid & mem_rd_data_end) begin
+                    state <= STATE_IDLE;
+                    complete <= 1;
+                end
+            end
+
+            STATE_WRITE: begin
                 if(mem_rdy) begin //Wait for command queue to accept command
                     mem_en <= 0;
                     state <= STATE_WRITEDATA_H;
@@ -299,5 +310,23 @@ module physical_ram(
             endcase
         end
     end
+
+//    ila_0  ila(.clk(ui_clk),
+//               .probe0(cpu_clk),
+//               .probe1(mem_rdy),
+//               .probe2(mem_en),
+//               .probe3(addr),
+//               .probe4(rst_n),
+//               .probe5(mem_cmd),
+//               .probe6(1'b0),
+//               .probe7(wstrobe_sync),
+//               .probe8(rstrobe_sync),
+//               .probe9(mem_rd_data_end),
+//               .probe10(mem_rd_data_valid),
+//               .probe11(mem_wdf_rdy),
+//               .probe12(mem_wdf_wren),
+//               .probe13(mem_wdf_end),
+//               .probe14(complete),
+//               .probe15(state));
 
 endmodule
